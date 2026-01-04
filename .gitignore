@@ -1,0 +1,21 @@
+# Data and Logs
+data/
+logs/
+
+# Environment and Credentials
+.env
+
+# Backups and Temporary Files
+*.backup
+*.tmp
+*.csv
+!template_groups.json
+# (Allowing specific JSONs if they are config, but data/ is already ignored)
+
+# Python 
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS specific
+.DS_Store
