@@ -45,7 +45,9 @@ def filter_matches(group_name, templates):
             writer = csv.DictWriter(f_out, fieldnames=reader.fieldnames)
             writer.writeheader()
             for row in reader:
-                if row.get('template') in templates:
+                # Filter by template AND duration (> 600s)
+                duration = int(row.get('duration', 0) or 0)
+                if row.get('template') in templates and duration >= 600:
                     writer.writerow(row)
                     count += 1
         # Atomic swap
