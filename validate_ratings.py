@@ -9,13 +9,14 @@ import settings
 # Configuration (must match rating_system.py)
 DEFAULT_TAU = 5.50
 
-def load_param_lookup():
+def load_param_lookup(group_dir: Path):
     param_lookup = {}
     group_default_tau = DEFAULT_TAU
-    if not settings.TEMPLATE_PARAMS_JSON.exists():
+    params_path = group_dir / settings.PARAMS_FILENAME
+    if not params_path.exists():
         return param_lookup, group_default_tau
     try:
-        with open(settings.TEMPLATE_PARAMS_JSON, "r") as f:
+        with open(params_path, "r") as f:
             params = json.load(f)
             for p in params:
                 if p.get("group_default"):
@@ -57,30 +58,40 @@ def load_ratings(filepath: Path) -> dict:
             }
     return ratings
 
-def evaluate_model(name: str, ratings_file: Path, filter_top_n: int = None):
-    print(f"\n[*] Evaluating {name}" + (f" (Top {filter_top_n} Matchups Only)" if filter_top_n else "") + "...")
+def evaluate_model(group_name: str, filter_top_n: int = None):
+    group_dir = settings.get_group_dir(group_name)
+    ratings_file = group_dir / settings.RATINGS_FILENAME
+    matches_file = group_dir / "matches.csv"
+    
     ratings = load_ratings(ratings_file)
     if not ratings:
-        print(f"[!] No ratings found at {ratings_file}")
+        print(f"    [!] No ratings found at {ratings_file}")
         return None
 
+    print(f"\n[*] Evaluating Group: {group_name}" + (f" (Top {filter_top_n} Matchups Only)" if filter_top_n else "") + "...")
+    
     # Identify elite pool if filtering is requested
     if filter_top_n:
-        sorted_ids = sorted(ratings.keys(), key=lambda x: ratings[x]['lcb'], reverse=True)
+        # Filter for eligible players first
+        eligible_ids = [pid for pid, r in ratings.items() if r.get('lcb', 0) > 0]
+        sorted_ids = sorted(eligible_ids, key=lambda x: ratings[x]['lcb'], reverse=True)
         elite_ids = set(sorted_ids[:filter_top_n])
-        print(f"    Restricting to matches between {len(elite_ids)} elite players.")
+        print(f"    Restricting to matches between top {len(elite_ids)} elite players.")
     else:
         elite_ids = None
 
-    param_lookup, group_default_tau = load_param_lookup()
+    param_lookup, group_default_tau = load_param_lookup(group_dir)
     
     total_abs_error = 0.0
     total_log_loss = 0.0
     total_matches = 0
+    correct_predictions = 0
     z_scores = []
     
-    # Use global matches if no specific file provided
-    matches_file = settings.MATCHES_CSV
+    if not matches_file.exists():
+        print(f"    [!] Group matches not found at {matches_file}")
+        return None
+
     with open(matches_file, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -109,22 +120,13 @@ def evaluate_model(name: str, ratings_file: Path, filter_top_n: int = None):
             elif template in param_lookup:
                 tau = param_lookup[template]
             
-            if p1_id < p2_id:
-                pair = (p1_id, p2_id)
-                p1_is_p1 = True
-            else:
-                pair = (p2_id, p1_id)
-                p1_is_p1 = False
-            
-            # Need to store TAU with the pair, or recalculate later.
-            # But wait, one pair can play on DIFFERENT templates.
-            # So we should evaluate match-by-match instead of pair-by-pair if TAU varies.
-            # RETHINK: If we use per-match TAU, we can't aggregate by pair for Log-Loss etc.
-            # Actually, we can if we sum match-by-match.
-            
-            mu1, mu2 = ratings[row['p1_id']]['mu'], ratings[row['p2_id']]['mu']
+            mu1, mu2 = ratings[p1_id]['mu'], ratings[p2_id]['mu']
             prob = compute_win_probability(mu1, mu2, tau) # Prob that p1 wins
-            outcome = 1.0 if winner == row['p1_id'] else 0.0
+            outcome = 1.0 if winner == p1_id else 0.0
+            
+            # Accuracy metric: Did we correctly predict the winner (>50% prob)?
+            if (prob > 0.5 and outcome == 1.0) or (prob < 0.5 and outcome == 0.0):
+                correct_predictions += 1
             
             abs_error = abs(outcome - prob)
             eps = 1e-15
@@ -139,9 +141,10 @@ def evaluate_model(name: str, ratings_file: Path, filter_top_n: int = None):
                 z_scores.append(abs(outcome - prob) / sd)
 
     metrics = {
-        'name': name,
+        'name': group_name,
         'matches': total_matches,
-        'wmae': total_abs_error / total_matches if total_matches > 0 else 0,
+        'mae': total_abs_error / total_matches if total_matches > 0 else 0,
+        'accuracy': correct_predictions / total_matches if total_matches > 0 else 0,
         'log_loss': total_log_loss / total_matches if total_matches > 0 else 0,
         'avg_z': np.mean(z_scores) if z_scores else 0,
         'std_z': np.std(z_scores) if z_scores else 0
@@ -149,27 +152,29 @@ def evaluate_model(name: str, ratings_file: Path, filter_top_n: int = None):
     return metrics
 
 def main():
-    # Check if a flag was passed for top-n filtering
     filter_n = 1000 if "--elite-only" in sys.argv else None
     
-    models = [
-        ("TrueSkill (Sequential)", Path("data/ratings_jc.csv")),
-        ("WHR (Graph-Propagated)", Path("data/ratings_jc_whr.csv"))
-    ]
+    # Load groups from template_groups.json
+    if not settings.TEMPLATE_GROUPS_JSON.exists():
+        print(f"Error: {settings.TEMPLATE_GROUPS_JSON} not found.")
+        return
+
+    with open(settings.TEMPLATE_GROUPS_JSON, 'r') as f:
+        groups = json.load(f)
     
     results = []
-    for name, path in models:
-        m = evaluate_model(name, path, filter_top_n=filter_n)
+    for group_name in groups.keys():
+        m = evaluate_model(group_name, filter_top_n=filter_n)
         if m: results.append(m)
     
     if not results: return
     
-    print("\n" + "="*80)
-    print(f"{'Model':25} | {'WMAE':8} | {'LogLoss':8} | {'Mean Z':8} | {'Std Z':8}")
-    print("-" * 80)
+    print("\n" + "="*85)
+    print(f"{'Group':25} | {'MAE':8} | {'Acc%':8} | {'LogLoss':8} | {'Mean Z':8} | {'Std Z':8}")
+    print("-" * 85)
     for r in results:
-        print(f"{r['name']:25} | {r['wmae']:.4f} | {r['log_loss']:.4f} | {r['avg_z']:.4f} | {r['std_z']:.4f}")
-    print("="*80)
+        print(f"{r['name']:25} | {r['mae']:.4f} | {r['accuracy']*100:6.1f}% | {r['log_loss']:.4f} | {r['avg_z']:.4f} | {r['std_z']:.4f}")
+    print("="*85)
 
 if __name__ == "__main__":
     main()

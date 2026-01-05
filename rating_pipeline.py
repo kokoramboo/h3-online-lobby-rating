@@ -57,7 +57,7 @@ def filter_matches(group_name, templates):
     return output_path, count
 
 def run_rating_step(matches_path, output_path, priors_path=None, tau=None, no_lcb=False, params_path=None, priors_out=None):
-    cmd = ["python3", RATINGS_SCRIPT, "--matches", str(matches_path), "--output", str(output_path)]
+    cmd = ["python3", "-u", RATINGS_SCRIPT, "--matches", str(matches_path), "--output", str(output_path)]
     if priors_path:
         cmd.extend(["--priors", str(priors_path)])
     if priors_out:
@@ -80,7 +80,7 @@ def calibrate_tau_granular(matches_path, ratings_path, templates):
     with open(ratings_path, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if not row['mu'] or not row['sigma']: continue
+            if not row.get('mu'): continue
             ratings[row['player_id']] = {'mu': float(row['mu'])}
     
     # Load all group matches into memory
@@ -116,23 +116,32 @@ def calibrate_tau_granular(matches_path, ratings_path, templates):
             if m['winner'] == p_small: pair_stats[pair]['p1_wins'] += 1
             pair_stats[pair]['total'] += 1
 
+        if not pair_stats: return 5.50
+
+        # Vectorized Sweep
+        pairs = list(pair_stats.keys())
+        diff_mus = np.array([ratings[p[0]]['mu'] - ratings[p[1]]['mu'] for p in pairs])
+        p1_wins = np.array([pair_stats[p]['p1_wins'] for p in pairs])
+        totals = np.array([pair_stats[p]['total'] for p in pairs])
+        
+        taus = np.arange(2.5, 9.5, 0.25)
         best_tau = 5.50
         min_log_loss = float('inf')
-        for tau in np.arange(2.5, 9.5, 0.25):
-            total_loss = 0.0
-            total_count = 0
-            for pair, stats in pair_stats.items():
-                prob = compute_win_prob(ratings[pair[0]]['mu'], ratings[pair[1]]['mu'], tau)
-                eps = 1e-15
-                loss = -(stats['p1_wins'] * math.log(max(prob, eps)) + (stats['total'] - stats['p1_wins']) * math.log(max(1.0 - prob, eps)))
-                total_loss += loss
-                total_count += stats['total']
-            if total_count == 0: continue
-            avg_loss = total_loss / total_count
+        eps = 1e-15
+
+        for tau in taus:
+            # Sigmoid: 1 / (1 + exp(-delta/tau))
+            probs = 1.0 / (1.0 + np.exp(-diff_mus / tau))
+            # Log-Loss: -(y*log(p) + (n-y)*log(1-p))
+            losses = -(p1_wins * np.log(np.maximum(probs, eps)) + 
+                       (totals - p1_wins) * np.log(np.maximum(1.0 - probs, eps)))
+            avg_loss = np.sum(losses) / np.sum(totals)
+            
             if avg_loss < min_log_loss:
                 min_log_loss = avg_loss
                 best_tau = tau
-        return best_tau
+                
+        return float(best_tau)
 
     results = []
     

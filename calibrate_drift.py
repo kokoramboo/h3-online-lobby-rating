@@ -67,7 +67,7 @@ def get_eligible_players(matches):
     return set(core.nodes())
 
 def run_calibration(matches_by_day, eligible_players, drift_per_day):
-    # Set internal tau=0 to isolate our temporal drift
+    # Calibrate temporal skill drift (sigma growth per day) for the Bayesian Rating system.
     trueskill.setup(mu=25.0, sigma=25.0/3, beta=25.0/6, tau=0.0, draw_probability=0.0)
     
     ratings = {pid: trueskill.Rating() for pid in eligible_players}

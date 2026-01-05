@@ -3,7 +3,7 @@ Bayesian Rating System for H3 Match Data
 
 Implements:
 - 5-core graph connectivity filtering
-- TrueSkill-style Bayesian skill inference
+- Gaussian Bayesian skill inference
 - Lower Confidence Bound (LCB) public ratings
 - Per-template independence
 """
@@ -28,7 +28,7 @@ NUM_SAMPLES = 1000
 LCB_QUANTILE = 0.01  # 1st percentile = 99% confidence
 WIN_PROB_TAU = 5.50  # Calibrated from sweep
 SKILL_DRIFT_PER_DAY = 0.005  # Calibrated from data sweep
-# TrueSkill settings (tau=0 because we use temporal drift instead)
+# Bayesian engine settings (tau=0 because we use temporal drift instead)
 trueskill.setup(mu=25.0, sigma=25.0/3, beta=25.0/6, tau=0.0, draw_probability=0.01)
 
 
@@ -415,7 +415,7 @@ def compute_all_ratings(matches: list, priors: dict = None, skip_lcb: bool = Fal
             'sigma': round(r['sigma'], 4),
             'expected_win_rate': round(mean_wr, 4),
             'rating_lcb': round(lcb_wr, 4),
-            'rating_normalized': round(lcb_wr * 100, 2),
+            'rating_normalized': round(lcb_wr * 1000, 0),
             'status': 'eligible',
             'component_size': len(eligible_players)
         })
@@ -586,7 +586,10 @@ def load_player_info(filepath: Path) -> tuple:
 
 def main():
     global WIN_PROB_TAU
-    parser = argparse.ArgumentParser(description="H3 Online Lobby Rating System")
+    parser = argparse.ArgumentParser(description="""
+H3 Online Lobby Rating System - Core Engine
+Implements Bayesian skill inference (Gaussian Skill Rating) with temporal drift.
+""")
     parser.add_argument("--matches", type=str, default="data/matches_jc_filtered.csv", help="Path to matches CSV")
     parser.add_argument("--output", type=str, default="data/ratings_jc.csv", help="Path to save ratings results")
     parser.add_argument("--priors-output", type=str, help="Path to save simplified priors for next run")
@@ -598,6 +601,10 @@ def main():
     parser.add_argument("--params", type=str, help="Path to template_params.json")
     
     args = parser.parse_args()
+
+    print(f"[*] H3 Rating Engine starting...")
+    print(f"[*] Matches: {args.matches}")
+    print(f"[*] Output: {args.output}")
 
     matches_path = Path(args.matches)
     output_path = Path(args.output)

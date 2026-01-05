@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rating System Documentation - H3 Online Lobby</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1867c0;
+            --bg: #f5f5f5;
+            --surface: #ffffff;
+            --text-primary: rgba(0, 0, 0, 0.87);
+            --text-secondary: rgba(0, 0, 0, 0.6);
+            --accent: #9146ff;
+            --shadow: 0 3px 1px -2px rgba(0, 0, 0, .2), 0 2px 2px 0 rgba(0, 0, 0, .14), 0 1px 5px 0 rgba(0, 0, 0, .12);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--bg);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 0;
+            line-height: 1.5;
+        }
+
+        .header {
+            background-color: var(--primary);
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: var(--shadow);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 500;
+            letter-spacing: 0.0125em;
+        }
+
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .nav a {
+            color: white;
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            transition: background 0.2s;
+        }
+
+        .nav a:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .card {
+            background: var(--surface);
+            border-radius: 4px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.12);
+            background: #fafafa;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 500;
+            color: var(--primary);
+        }
+
+        .card-content {
+            padding: 1.5rem;
+        }
+
+        .card-content p {
+            margin-top: 0;
+            color: var(--text-secondary);
+        }
+
+        ul {
+            padding-left: 1.2rem;
+            margin: 0;
+        }
+
+        li {
+            margin-bottom: 1rem;
+        }
+
+        li strong {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        code {
+            font-family: monospace;
+            background: #eee;
+            padding: 2px 4px;
+            border-radius: 4px;
+            color: var(--accent);
+        }
+
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        @media (max-width: 600px) {
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>H3 Online Lobby - Rating System</h1>
+        <nav class="nav">
+            <a href="#en">EN</a>
+            <a href="#ru">RU</a>
+            <a href="#pl">PL</a>
+            <a href="#ua">UA</a>
+        </nav>
+    </div>
+
+    <div class="container">
+
+        <div id="en" class="card">
+            <div class="card-header">
+                <h2>General Logic (English)</h2>
+            </div>
+            <div class="card-content">
+                <p>A Gaussian Bayesian Rating system designed for the HoMM3 Online Lobby. It estimates actual skill
+                    while punishing instability.</p>
+                <ul>
+                    <li><strong>Conservative Skill (LCB)</strong>: The system evaluates your "minimum guaranteed" skill
+                        level with 99% confidence. This prevents lucky streaks from inflating your rank and encourages
+                        playing more games to prove your consistency.</li>
+                    <li><strong>Power Score (0-1000)</strong>: This is your expected win count if you played 1000
+                        matches against 1000 elite players. For example, a score of <code>776</code> means you are
+                        expected to win at least 776 games out of 1000.</li>
+                    <li><strong>Experience Filter</strong>: While your rating is calculated from game 1, you only appear
+                        on the public leaderboard after completing <strong>50 valid matches</strong> to ensure rank
+                        stability.</li>
+                    <li><strong>Dynamic Difficulty</strong>: Winning on a high-randomness template is worth slightly
+                        less than winning on a standardized competitive map.</li>
+                    <li><strong>Rustiness Factor</strong>: If you take a break, your stability decreases. Play again to
+                        "prove" your skills and restore your rank.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="ru" class="card">
+            <div class="card-header">
+                <h2>Общая Логика (Русский)</h2>
+            </div>
+            <div class="card-content">
+                <p>Байесовская система рейтинга для Онлайн Лобби HoMM3. Оценивает реальный навык и учитывает
+                    стабильность игры.</p>
+                <ul>
+                    <li><strong>Надежный Уровень (LCB)</strong>: Это «минимально гарантированный» уровень мастерства, в
+                        котором система уверена на 99%. Это исключает случайные высокие места в списке за счет везения и
+                        требует больше игр для подтверждения стабильности.</li>
+                    <li><strong>Рейтинг Силы (0-1000)</strong>: Отражает ваше ожидаемое количество побед, если бы вы
+                        сыграли 1000 матчей против 1000 сильнейших игроков. Например, <code>776</code> означает, что вы
+                        ожидаемо выиграете не менее 776 игр из 1000.</li>
+                    <li><strong>Лимит 50 Игр</strong>: Ваш рейтинг рассчитывается с первой игры, но в публичном списке
+                        вы появитесь только после <strong>50 матчей</strong>. Это гарантирует стабильность вашего
+                        рейтинга.</li>
+                    <li><strong>Сложность шаблона</strong>: Система понимает, что некоторые карты более "рандомные".
+                        Победа на таком шаблоне дает чуть меньше очков, чем на классической карте.</li>
+                    <li><strong>Потеря формы</strong>: Если долго не играть, ваша стабильность падает. Нужно сыграть
+                        пару игр, чтобы «подтвердить» свой уровень и восстановить рейтинг.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="pl" class="card">
+            <div class="card-header">
+                <h2>Logika Ogólna (Polski)</h2>
+            </div>
+            <div class="card-content">
+                <p>Gausowski system rankingu Bayesowskiego dla Lobby Online HoMM3. Szacuje realne umiejętności i
+                    premiuje stabilność.</p>
+                <ul>
+                    <li><strong>Konserwatywna Umiejętność (LCB)</strong>: To Twój „minimalny gwarantowany” poziom
+                        umiejętności, którego system jest pewny w 99%. Zapobiega to przypadkowym wysokim pozycjom w
+                        rankingu i zachęca do rozgrywania większej liczby gier w celu potwierdzenia formy.</li>
+                    <li><strong>Wynik Siły (0-1000)</strong>: Reprezentuje oczekiwaną liczbę zwycięstw, gdybyś rozegrał
+                        1000 meczów przeciwko 1000 najlepszych graczy. Wynik <code>776</code> oznacza, że powinieneś
+                        wygrać co najmniej 776 gier z 1000.</li>
+                    <li><strong>Minimum 50 Gier</strong>: Twój ranking pojawi się na liście publicznej dopiero po
+                        rozegraniu <strong>50 meczów</strong>, co zapewnia stabilność Twojej pozycji.</li>
+                    <li><strong>Dynamiczna Trudność</strong>: Wygrana na szablonie o dużej losowości jest warta nieco
+                        mniej niż na standardowej mapie turniejowej.</li>
+                    <li><strong>Czynnik Zardzewienia</strong>: Jeśli zrobisz sobie przerwę, Twoja stabilność spada.
+                        Musisz zagrać ponownie, aby odzyskać swoją rangę.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="ua" class="card">
+            <div class="card-header">
+                <h2>Загальна Логіка (Українська)</h2>
+            </div>
+            <div class="card-content">
+                <p>Байєсівська система рейтингу для Онлайн Лобі HoMM3. Оцінює реальну майстерність та враховує
+                    стабільність гри.</p>
+                <ul>
+                    <li><strong>Надійна Майстерність (LCB)</strong>: Це «мінімально гарантований» рівень майстерності, у
+                        якому система впевнена на 99%. Це виключає випадкові високі місця в списку через везіння і
+                        вимагає більше ігор для підтвердження стабільності.</li>
+                    <li><strong>Показник Сили (0-1000)</strong>: Відображає вашу очікувану кількість перемог, якщо б ви
+                        зіграли 1000 матчів проти 1000 найсильніших гравців. Наприклад, <code>776</code> означає, що ви
+                        очікувано виграєте не менше 776 ігор з 1000.</li>
+                    <li><strong>Ліміт у 50 Ігор</strong>: Ваш рейтинг розраховується з першої гри, але у публічному
+                        списку ви з'явитеся лише після <strong>50 матчів</strong>.</li>
+                    <li><strong>Складність шаблону</strong>: Перемога на "рандомній" карті важить трохи менше, ніж на
+                        класичній змагальній карті.</li>
+                    <li><strong>Втрата форми</strong>: Якщо довго не грати, ваша стабільність падає. Потрібно зіграти
+                        кілька ігор, щоб "підтвердити" свій рівень.</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer">
+        H3 Online Lobby Rating System &copy; 2026
+    </div>
+
+</body>
+
+</html>

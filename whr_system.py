@@ -19,7 +19,8 @@ import numpy as np
 from scipy import optimize
 
 # Constants
-W2 = 0.005  # Variance drift per day (same as our TrueSkill TAU)
+W2 = 0.005  # Variance drift per day (matched- Gaussian Bayesian skill inference
+# m TAU)
 INITIAL_MU = 0.0  # Log-space rating
 DEFAULT_SIGMA = 1.0
 
