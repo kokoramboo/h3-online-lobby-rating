@@ -38,6 +38,7 @@ The core mathematical engine that implements the TrueSkill logic and analytical 
 - `analyze_graph.py`: Visualizes the player connectivity graph (k-core analysis).
 - `whr_system.py`: A Whole-History Rating (WHR) implementation used for benchmarking.
 - `compute_fair_prices.py`: WIP. Computes gold handicap "fair prices" based on Elo/TrueSkill differentials.
+- `docs/meta_and_auctions.md`: Technical context on the auction and handicap system.
 
 ## Data Formats
 
