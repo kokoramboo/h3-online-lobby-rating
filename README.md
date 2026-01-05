@@ -19,7 +19,6 @@ To ensure the leaderboard represents established players, two filters are applie
 The system has been empirically validated against a dataset of **1.2 million matches** with the following performance metrics:
 - **Weighted MAE (Mean Absolute Error)**: **0.058**. On average, predicted win rates deviate by less than 6% from historical reality in elite matchups.
 - **Reliability**: High calibration (1.4% bias). The system is neither overly cautious nor overly aggressive in its skill estimations.
-- **Integrity**: A mandatory **10-minute (600s) duration filter** is enforced in the pipeline to ensure that "short games" (concessions, restarts) do not influence the ranking.
 
 > [!NOTE]
 > This project implements Bayesian skill inference based on the algorithm developed by Microsoft Research (similar to the logic used by TrueSkill™). TrueSkill™ is a trademark of Microsoft Corporation. The official evaluation uses a **Conservative Skill Estimate (LCB)** which represents the "minimum guaranteed" skill level the system is 99% confident in.
@@ -42,15 +41,24 @@ The core mathematical engine that implements the TrueSkill logic and analytical 
 
 ## Data Formats
 
-### Input: `matches.csv`
+### Input Data
+The system requires two primary CSV files as input (path configurable via `.env`):
+
+#### 1. `matches.csv`
 Required fields for rating processing:
 - `p1_id`, `p2_id`: Unique player identifiers.
 - `p1_status`, `p2_status`: Outcome (1 = Win, 0 = Loss).
 - `start_time`: ISO8601 timestamp (e.g., `2024-01-01T12:00:00Z`).
 - `template`: Template name (used for grouping).
 - `map_size`: Numeric size code (e.g., `144` for XL, `108` for L).
-- `is_random`: `1` if the matchup was random-random (used for calibration), `0` otherwise.
-- `duration`: Match length in seconds (filtered < 600s by default).
+- `is_random`: `1` if the matchup was random-random, `0` otherwise.
+- `duration`: Match length in seconds (filtered < 600s).
+
+#### 2. `players.csv`
+Used to map player IDs to readable nicknames and lobby ratings:
+- `player_id`: Canonical ID.
+- `nickname`: Human-readable name.
+- `cur_rating`: Current lobby rating (displayed for comparison).
 
 ### Output Data
 The pipeline organizes results into group-specific subdirectories:
@@ -79,7 +87,11 @@ Intuitive guide for players:
 1.  **Configure Environment**:
     *   Copy the sample configuration: `cp .env.sample .env`
     *   Adjust the paths in `.env` to point to your local data files.
-2.  **Run the Pipeline**:
+2.  **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+3.  **Run the Pipeline**:
     *   Execute the full automated sync and rating update:
         ```bash
         ./run_pipeline.sh
