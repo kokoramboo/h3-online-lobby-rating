@@ -18,7 +18,15 @@ In professional play, standard town and side choices are balanced through a dyna
 ### 3. Side/Color Auction
 - A second auction occurs for the **choice** of color (Red vs Blue).
 - Again, the winner pays the bid amount to the loser.
-- Blue typically receives more time and can counter-pick, while Red may have speed advantages.
+- **Red Advantage**: Gets the absolute first turn of the game.
+- **Blue Advantages**:
+    - **Mana Replenishment**: Replenishes mana immediately after their turn ends, whereas Red must wait for Blue's turn to finish.
+    - **Reactive Restarts**: Has the "second vote" on map restarts, allowing them to react to Red's decision.
+
+## The Restart Meta
+Map generation is balanced through a formal restart protocol:
+- **Quota**: Each player can restart/regenerate the map twice on the first turn (111) or once on the second turn (112).
+- **Order**: Red must call for a restart first; Blue then has the final decision (the "second vote").
 
 ## Implications for Data Analysis
 
