@@ -27,7 +27,7 @@ K_CORE = 5
 NUM_SAMPLES = 1000
 LCB_QUANTILE = 0.01  # 1st percentile = 99% confidence
 WIN_PROB_TAU = 5.50  # Calibrated from sweep
-SKILL_DRIFT_PER_DAY = 0.005  # Calibrated from data sweep
+SKILL_DRIFT_PER_DAY = 0.005  # Default, can be overridden
 # Bayesian engine settings (tau=0 because we use temporal drift instead)
 trueskill.setup(mu=25.0, sigma=25.0/3, beta=25.0/6, tau=0.0, draw_probability=0.01)
 
@@ -163,7 +163,7 @@ def load_mu_priors(filepath: Path) -> dict:
     return priors
 
 
-def run_trueskill_inference(matches: list, eligible_players: set, priors: dict = None, params_path: Path = None) -> dict:
+def run_trueskill_inference(matches: list, eligible_players: set, priors: dict = None, params_path: Path = None, global_drift: float = None) -> dict:
     """
     Run TrueSkill inference on matches with temporal skill drift.
     Returns dict: player_id -> trueskill.Rating
@@ -203,6 +203,16 @@ def run_trueskill_inference(matches: list, eligible_players: set, priors: dict =
     # Ratio: 4.166 / 5.50 = 0.7575
     BETA_RATIO = (25.0/6.0) / 5.50
     
+    drift_per_day = global_drift if global_drift is not None else SKILL_DRIFT_PER_DAY
+    
+    # template -> drift mapping
+    drift_lookup = {}
+    for p in template_params_list:
+        if p.get("group_default") and "drift" in p:
+            drift_per_day = p["drift"]
+        elif "template" in p and "drift" in p:
+            drift_lookup[p["template"]] = p["drift"]
+
     def create_engine(tau):
         return trueskill.TrueSkill(
             mu=25.0, 
@@ -263,7 +273,8 @@ def run_trueskill_inference(matches: list, eligible_players: set, priors: dict =
                 delta = current_time - last_time[pid]
                 delta_days = delta.total_seconds() / 86400.0
                 if delta_days > 0:
-                    new_sigma = math.sqrt(ratings[pid].sigma**2 + SKILL_DRIFT_PER_DAY * delta_days)
+                    player_drift = drift_lookup.get(match.get('template'), drift_per_day)
+                    new_sigma = math.sqrt(ratings[pid].sigma**2 + player_drift * delta_days)
                     ratings[pid] = trueskill.Rating(mu=ratings[pid].mu, sigma=new_sigma)
         
         # Select engine based on template, size, and randomness
@@ -306,7 +317,8 @@ def run_trueskill_inference(matches: list, eligible_players: set, priors: dict =
             delta = now - last_time[pid]
             delta_days = delta.total_seconds() / 86400.0
             if delta_days > 0:
-                new_sigma = math.sqrt(ratings[pid].sigma**2 + SKILL_DRIFT_PER_DAY * delta_days)
+                # Use default drift for final period (safe assumption)
+                new_sigma = math.sqrt(ratings[pid].sigma**2 + drift_per_day * delta_days)
                 ratings[pid] = trueskill.Rating(mu=ratings[pid].mu, sigma=new_sigma)
                 drift_applied += 1
     
@@ -347,7 +359,7 @@ def compute_analytical_winrate(mu: float, sigma: float, mu_baseline: float, tau:
 
 
 
-def compute_all_ratings(matches: list, priors: dict = None, skip_lcb: bool = False, params_path: Path = None) -> list:
+def compute_all_ratings(matches: list, priors: dict = None, skip_lcb: bool = False, params_path: Path = None, global_drift: float = None) -> list:
     """Main function to compute all ratings."""
     
     # Build graph and compute 5-core
@@ -356,7 +368,7 @@ def compute_all_ratings(matches: list, priors: dict = None, skip_lcb: bool = Fal
     eligible_players = compute_k_core(G, K_CORE)
     
     # Run TrueSkill inference
-    ratings = run_trueskill_inference(matches, eligible_players, priors=priors, params_path=params_path)
+    ratings = run_trueskill_inference(matches, eligible_players, priors=priors, params_path=params_path, global_drift=global_drift)
     
     # Skip LCB if requested (for speed in intermediate steps)
     if skip_lcb:
@@ -599,6 +611,7 @@ Implements Bayesian skill inference (Gaussian Skill Rating) with temporal drift.
     parser.add_argument("--min-games", type=int, default=50, help="Minimum games for 50plus leaderboard")
     parser.add_argument("--no-lcb", action="store_true", help="Skip slow LCB and normalization (useful for intermediate runs)")
     parser.add_argument("--params", type=str, help="Path to template_params.json")
+    parser.add_argument("--drift", type=float, help="Override default SKILL_DRIFT_PER_DAY")
     
     args = parser.parse_args()
 
@@ -637,7 +650,7 @@ Implements Bayesian skill inference (Gaussian Skill Rating) with temporal drift.
         names, lobby_ratings = load_player_info(player_info_path)
 
     params_path = Path(args.params) if args.params else settings.TEMPLATE_PARAMS_JSON
-    results = compute_all_ratings(matches, priors=priors, skip_lcb=args.no_lcb, params_path=params_path)
+    results = compute_all_ratings(matches, priors=priors, skip_lcb=args.no_lcb, params_path=params_path, global_drift=args.drift)
     
     # Run sanity checks
     checks = {}

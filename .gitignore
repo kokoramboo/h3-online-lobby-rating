@@ -9,7 +9,6 @@ logs/
 *.backup
 *.tmp
 *.csv
-!template_groups.json
 # (Allowing specific JSONs if they are config, but data/ is already ignored)
 
 # Python 

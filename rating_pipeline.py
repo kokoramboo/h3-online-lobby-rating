@@ -58,7 +58,7 @@ def filter_matches(group_name, templates):
         raise e
     return output_path, count
 
-def run_rating_step(matches_path, output_path, priors_path=None, tau=None, no_lcb=False, params_path=None, priors_out=None):
+def run_rating_step(matches_path, output_path, priors_path=None, tau=None, drift=None, no_lcb=False, params_path=None, priors_out=None):
     cmd = ["python3", "-u", RATINGS_SCRIPT, "--matches", str(matches_path), "--output", str(output_path)]
     if priors_path:
         cmd.extend(["--priors", str(priors_path)])
@@ -66,6 +66,8 @@ def run_rating_step(matches_path, output_path, priors_path=None, tau=None, no_lc
         cmd.extend(["--priors-output", str(priors_out)])
     if tau:
         cmd.extend(["--tau", str(tau)])
+    if drift:
+        cmd.extend(["--drift", str(drift)])
     if no_lcb:
         cmd.append("--no-lcb")
     if params_path:
@@ -195,16 +197,25 @@ def main():
     parser = argparse.ArgumentParser(description="H3 Online Lobby Rating System - Per-Group Pipeline")
     parser.add_argument("--force", action="store_true", help="Force re-run of all steps even if output files exist")
     parser.add_argument("--priors", type=str, help="Global priors file to bootstrap all groups")
+    parser.add_argument("--drift", type=float, help="Skill drift per day (e.g. 0.003 for JC)")
     args = parser.parse_args()
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     groups = load_groups()
     
-    for group_name, templates in groups.items():
+    for group_name, group_data in groups.items():
         print(f"\n" + "="*60)
         print(f"PROCESSING GROUP: {group_name}")
         print("="*60)
         
+        # Support both simple list format and expanded dict format
+        if isinstance(group_data, list):
+            templates = group_data
+            group_config_drift = None
+        else:
+            templates = group_data.get("templates", [])
+            group_config_drift = group_data.get("drift")
+
         group_dir = settings.get_group_dir(group_name)
         backup_outputs(group_dir)
         
@@ -246,6 +257,16 @@ def main():
         
         # 4. Calibrate granularly
         template_params = calibrate_tau_granular(matches_path, refinement_out, templates)
+        
+        # If a drift was provided at the group level, inject it into the default params
+        active_drift = group_config_drift if group_config_drift is not None else args.drift
+        if active_drift is not None:
+             for p in template_params:
+                if p.get("group_default"):
+                    p["drift"] = active_drift
+                    print(f"[*] Applied drift {active_drift} to group default parameters.")
+                    break
+
         params_json_path = group_dir / settings.PARAMS_FILENAME
         temp_params_path = params_json_path.with_suffix('.tmp')
         try:
@@ -257,10 +278,10 @@ def main():
                 temp_params_path.unlink()
             raise e
         
-        # 5. Phase 3 (Final with granular calibrated Taus)
+        # 5. Phase 3 (Final with granular calibrated Taus and Drift)
         final_out = group_dir / settings.RATINGS_FILENAME
         priors_out = group_dir / settings.PRIORS_FILENAME
-        run_rating_step(matches_path, final_out, priors_path=refinement_out, params_path=params_json_path, priors_out=priors_out)
+        run_rating_step(matches_path, final_out, priors_path=refinement_out, params_path=params_json_path, priors_out=priors_out, drift=active_drift)
         
     print(f"\n[!] All groups processed.")
 

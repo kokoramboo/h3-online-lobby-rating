@@ -1,5 +1,6 @@
 import csv
 import math
+import argparse
 from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
@@ -7,8 +8,6 @@ import trueskill
 import numpy as np
 
 # Configuration
-WIN_PROB_TAU = 7.0
-MATCHES_FILE = Path("data/matches_jc_filtered.csv")
 K_CORE = 5
 
 def sigmoid(x: float) -> float:
@@ -17,13 +16,13 @@ def sigmoid(x: float) -> float:
     except OverflowError:
         return 0.0 if x < 0 else 1.0
 
-def compute_win_probability(mu_a: float, mu_b: float) -> float:
-    return sigmoid((mu_a - mu_b) / WIN_PROB_TAU)
+def compute_win_probability(mu_a: float, mu_b: float, tau: float) -> float:
+    return sigmoid((mu_a - mu_b) / tau)
 
-def load_matches():
+def load_matches(matches_file):
     matches = []
-    print("[*] Loading matches...")
-    with open(MATCHES_FILE, 'r') as f:
+    print(f"[*] Loading matches from {matches_file}...")
+    with open(matches_file, 'r') as f:
         reader = csv.DictReader(f)
         for row in reader:
             p1_status = int(row.get('p1_status', 0) or 0)
@@ -66,7 +65,7 @@ def get_eligible_players(matches):
     core = nx.k_core(G, k=K_CORE)
     return set(core.nodes())
 
-def run_calibration(matches_by_day, eligible_players, drift_per_day):
+def run_calibration(matches_by_day, eligible_players, drift_per_day, tau):
     # Calibrate temporal skill drift (sigma growth per day) for the Bayesian Rating system.
     trueskill.setup(mu=25.0, sigma=25.0/3, beta=25.0/6, tau=0.0, draw_probability=0.0)
     
@@ -87,7 +86,6 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
         day_matches = matches_by_day[day]
         
         # 1. APPLY DRIFT to players in today's matches
-        # (Based on when they last played before today)
         active_today = set()
         for m in day_matches:
             active_today.add(m['winner'])
@@ -95,8 +93,6 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
             
         for pid in active_today:
             if pid in last_time:
-                # Delta since their last match
-                # Using the start of today's first match for this player roughly
                 delta_days = (datetime.combine(day, datetime.min.time()) - 
                              datetime.combine(last_time[pid].date(), datetime.min.time())).days
                 if delta_days > 0:
@@ -110,9 +106,9 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
             if p1 not in eligible_players or p2 not in eligible_players:
                 continue
                 
-            prob = compute_win_probability(ratings[p1].mu, ratings[p2].mu)
+            prob = compute_win_probability(ratings[p1].mu, ratings[p2].mu, tau)
             
-            # Determine max gap (how "stale" are the players?)
+            # Determine max gap
             gap1 = (day - last_time[p1].date()).days if p1 in last_time else 0
             gap2 = (day - last_time[p2].date()).days if p2 in last_time else 0
             max_gap = max(gap1, gap2)
@@ -120,7 +116,6 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
             predictions.append({'prob': prob, 'max_gap': max_gap})
             
         # 3. UPDATE ratings with today's matches
-        # (We process one by one but conceptually it's a day update)
         for m in day_matches:
             p1, p2 = m['winner'], m['loser']
             if p1 not in eligible_players or p2 not in eligible_players:
@@ -137,12 +132,10 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
                 loss = -math.log(prob)
                 correct = 1 if prob > 0.5 else 0
                 
-                # All
                 metrics['all']['loss'] += loss
                 metrics['all']['count'] += 1
                 metrics['all']['correct'] += correct
                 
-                # Segments
                 label = 'gap_0_7'
                 if p['max_gap'] > 30: label = 'gap_30plus'
                 elif p['max_gap'] >= 7: label = 'gap_7_30'
@@ -154,7 +147,12 @@ def run_calibration(matches_by_day, eligible_players, drift_per_day):
     return metrics
 
 def main():
-    all_matches = load_matches()
+    parser = argparse.ArgumentParser(description="Calibrate skill drift over time.")
+    parser.add_argument("--matches", type=str, required=True, help="Path to matches CSV")
+    parser.add_argument("--tau", type=float, default=5.50, help="TAU for sigmoid")
+    args = parser.parse_args()
+
+    all_matches = load_matches(Path(args.matches))
     eligible = get_eligible_players(all_matches)
     print(f"[*] Core players: {len(eligible)}")
     
@@ -163,16 +161,22 @@ def main():
     for m in all_matches:
         matches_by_day[m['day']].append(m)
     
-    drifts = [0, 0.005, 0.02, 0.1]
+    drifts = [0, 0.001, 0.003, 0.005, 0.007, 0.01, 0.02, 0.05]
     
-    print("\n[*] Starting DAY-BY-DAY calibration sweep...")
+    print(f"\n[*] Starting calibration sweep (matches={args.matches}, tau={args.tau})...")
     header = f"{'Drift/Day':10} | {'Global Loss':12} | {'Acc %':8} | {'Gap 7-30':10} | {'Gap 30+'}"
     print(header)
     print("-" * len(header))
     
+    best_drift = 0.005
+    min_loss = float('inf')
+
     for d in drifts:
-        results = run_calibration(matches_by_day, eligible, d)
+        results = run_calibration(matches_by_day, eligible, d, args.tau)
         
+        if results['all']['count'] == 0:
+            continue
+
         all_l = results['all']['loss'] / results['all']['count']
         all_a = results['all']['correct'] / results['all']['count'] * 100
         
@@ -180,6 +184,12 @@ def main():
         g30p = results['gap_30plus']['loss'] / results['gap_30plus']['count'] if results['gap_30plus']['count'] > 0 else 0
         
         print(f"{d:10.4f} | {all_l:12.6f} | {all_a:7.2f}% | {g7_30:10.6f} | {g30p:10.6f}")
+
+        if all_l < min_loss:
+            min_loss = all_l
+            best_drift = d
+
+    print(f"\n[*] Optimal drift: {best_drift:.4f}")
 
 if __name__ == "__main__":
     main()
